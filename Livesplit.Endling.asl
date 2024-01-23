@@ -1,6 +1,6 @@
 // Endling: Extinction is forever autosplitter for Livesplit usage
 // Requires the LivesplitHelper mod !
-// 
+//
 // written by JP_dev
 // Discord: JP#8135
 // Twitch: twitch.tv/jp_dev
@@ -8,70 +8,48 @@
 
 state("Endling-Win64-Shipping") {}
 
-startup {
-	vars.scanTarget = new SigScanTarget(16, "45 4E 44 4C 49 4E 47 4C 49 56 45 53 50 4C 49 54");
-	vars.InitComplete = false;
-	vars.MaxShelterId = 0;
-}
-
 init
 {
-	IntPtr ptr = IntPtr.Zero;
+	const string MagicString = "ENDLINGLIVESPLIT";
+
+	byte[] magicBytes = Encoding.UTF8.GetBytes(MagicString);
+	var scanTarget = new SigScanTarget(magicBytes.Length, magicBytes);
 
 	var module = modules.First(m => m.ModuleName == "LivesplitHelperMod.dll");
-
 	print("------------------------ MODULE FOUND ! ------------------------");
-	// Prepare scanner 
+
 	var scanner = new SignatureScanner(game, module.BaseAddress, module.ModuleMemorySize);
-	ptr = scanner.Scan(vars.scanTarget);
-	// if something was found, leave the loop
-	if (ptr != IntPtr.Zero) {
-		print("------------------------ SIGNATURE FOUND ! ------------------------");
-		vars.watchers = new MemoryWatcherList();
-		vars.watchers.Add(new MemoryWatcher<Int32>(new DeepPointer(ptr)) {Name = "RunStarted"});
-		vars.watchers.Add(new MemoryWatcher<Int32>(new DeepPointer(ptr+4)) {Name = "ShelterId"});
-		vars.watchers.Add(new MemoryWatcher<Int32>(new DeepPointer(ptr+8)) {Name = "CreditsPlaying"});
-		vars.watchers.Add(new MemoryWatcher<Int32>(new DeepPointer(ptr+12)) {Name = "Loading"});
-		vars.InitComplete = true;
-		return true;
-	}
+	vars.AutoSplitterData = scanner.ScanAll(scanTarget).First(p => p != IntPtr.Zero);
+	print("------------------------ SIGNATURE FOUND ! ------------------------");
 }
 
 update
 {
-	if (!(vars.InitComplete))
-	        return false;
-	vars.watchers.UpdateAll(game);
+	IntPtr aslData = vars.AutoSplitterData;
+
+	current.RunStarted     = game.ReadValue<int>(aslData + 0x0);
+	current.ShelterId      = game.ReadValue<int>(aslData + 0x4);
+	current.CreditsPlaying = game.ReadValue<int>(aslData + 0x8);
+	current.Loading        = game.ReadValue<int>(aslData + 0xC);
 }
 
 start
 {
-	var bStart = (vars.watchers["RunStarted"].Changed) &&
-		(vars.watchers["RunStarted"].Current == 1);
-	if (bStart) {
-		vars.MaxShelterId = 0;
-	}
-	return bStart;
+	return old.RunStarted != 1 && current.RunStarted == 1;
 }
 
 split
 {
-	var b = (vars.watchers["ShelterId"].Changed && (vars.watchers["ShelterId"].Current > vars.MaxShelterId))
-	|| ((vars.watchers["CreditsPlaying"].Changed) && (vars.watchers["CreditsPlaying"].Current == 1));
-	if (b) {
-		print("Changing vars.MaxShelterId from " + vars.MaxShelterId + " to " + vars.watchers["ShelterId"].Current);
-		vars.MaxShelterId = vars.watchers["ShelterId"].Current;
-	}
-	return b;
+	return old.ShelterId != current.ShelterId
+		|| old.CreditsPlaying != 1 && current.CreditsPlaying == 1;
 }
 
 reset
 {
-	return (vars.watchers["RunStarted"].Changed) &&
-		(vars.watchers["RunStarted"].Current == 1);
+	return old.RunStarted == 1 && current.RunStarted != 1;
 }
 
 isLoading
 {
-	return (vars.watchers["Loading"].Current == 1);
+	return current.Loading == 1;
 }
