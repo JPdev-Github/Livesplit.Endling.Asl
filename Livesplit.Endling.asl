@@ -46,7 +46,7 @@ split
 
 reset
 {
-	return old.RunStarted == 1 && current.RunStarted != 1;
+	return old.RunStarted != 1 && current.RunStarted == 1;
 }
 
 isLoading
